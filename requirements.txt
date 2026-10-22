@@ -1,0 +1,13 @@
+# Versions the code was run with (Python 3.8).
+torch==2.1.0
+transformers==4.46.3
+peft==0.6.0
+accelerate==0.34.2
+datasets>=2.14,<4   # MIMIR is a script-based dataset; datasets 4.x dropped script loading
+openai>=1.0
+tenacity
+numpy
+pandas
+scikit-learn
+matplotlib
+tqdm
