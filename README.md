@@ -26,7 +26,9 @@ export OPENAI_API_KEY=...                  # any OpenAI-compatible endpoint
 export OPENAI_BASE_URL=https://.../v1/     # optional, for non-OpenAI endpoints
 ```
 
-A GPU with at least 16 GB of memory is needed for the 7B models (fp16).
+Python 3.8–3.11 (tested on Python 3.8; `torch==2.1.0` has no wheels for newer versions).
+The code was run on a single NVIDIA A100 (80 GB). The 7B models are loaded in fp16 (about 14 GB of weights),
+so detection needs a GPU with more memory than that, and LoRA fine-tuning in `simulate.py` needs more still.
 
 ## Demo: the five released models
 
@@ -36,12 +38,17 @@ storytelling, news report). The laundered training data is in `data/laundered/`;
 
 ```bash
 bash scripts/download_adapters.sh                 # -> adapters/prompt{1..5}/
-python scripts/demo.py                            # all five; or --prompt_ids 4
+python scripts/demo.py --prompt_ids 4 --rounds 1  # quick try: one model, one refinement round
+python scripts/demo.py                            # all five models, 10 rounds each
 ```
 
 The demo prints, per model, the baseline MIA on the original texts, the best SDR score and the recovered
 prompt next to the secret one; full results go to `results/demo/prompt{k}.json`.
 LLM sampling (temperature 0.5) makes SDR results vary between runs; the baseline does not.
+
+LLM calls are sequential. Register identification alone makes about 560 calls per model and every refinement
+round adds 58–265 more, so the full demo (5 models × 10 rounds) makes several thousand calls and runs for
+many hours; the quick try above makes roughly 600–800 calls.
 
 ## Using SDR on your own data
 
@@ -74,11 +81,11 @@ texts for register identification (defaults 10 / 5 / 5).
 **Simulating a laundering attack.** To create your own suspect model:
 
 ```bash
-python scripts/prepare_mimir.py --dataset mimir_wiki --out_dir data/mimir_wiki    # or mimir_c4 / mimir_hackernews
-python scripts/simulate.py --members data/mimir_wiki/members.json \
+python scripts/prepare_mimir.py --dataset mimir_wiki    # -> runs/data/mimir_wiki/ (or mimir_c4 / mimir_hackernews)
+python scripts/simulate.py --members runs/data/mimir_wiki/members.json \
     --secret_prompt "Rewrite the text as ..." --model EleutherAI/pythia-6.9b --out_dir runs/my_attack
-python scripts/detect.py --suspect data/mimir_wiki/members.json --reference data/mimir_wiki/nonmembers.json \
-    --prefix data/mimir_wiki/prefix.json --adapter runs/my_attack/adapter --out runs/my_attack/result.json
+python scripts/detect.py --suspect runs/data/mimir_wiki/members.json --reference runs/data/mimir_wiki/nonmembers.json \
+    --prefix runs/data/mimir_wiki/prefix.json --adapter runs/my_attack/adapter --out runs/my_attack/result.json
 ```
 
 MIMIR is a gated dataset on Hugging Face: accept its terms on the dataset page and run `huggingface-cli login`
@@ -93,7 +100,7 @@ so the only way they become members is through the laundered fine-tuning.
 
 ## Output format
 
-`result.json` maps each recovered prompt that passed the Stage-2 gate to its MIA results
+`result.json` (intermediate files go to a directory with the same name, e.g. `result/`) maps each recovered prompt that passed the Stage-2 gate to its MIA results
 (`{"ll": {"AUC-ROC": ..., "TPR@1%FPR": ...}, "zlib": ..., "mink_0.2": ..., "recall": ...}`), plus
 `"original"`: the same metrics for the MIA on the original texts.
 

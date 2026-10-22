@@ -7,7 +7,7 @@ from tqdm import tqdm
 from .llm_api import gpt_synthetic_prefix
 from .mia import MIA_evaluate
 from .sdr_loop import prompt_reverse_loop
-from .utils import save_json
+from .utils import load_json, save_json
 
 MIA_METRICS = ["ll", "zlib", "mink_0.2", "recall"]
 
@@ -40,6 +40,28 @@ def check_inputs(suspect, reference, prefix, min_texts=100):
     if len(suspect) != len(reference):
         print(f"Warning: {len(suspect)} suspect vs {len(reference)} reference texts; "
               f"the baseline MIA pairs them and uses the first {min(len(suspect), len(reference))} of each.")
+
+
+def check_files(templates_path, register_prompts_path, adapter=None):
+    """Validate detection inputs on disk before any model is loaded."""
+    for name, path in (("templates", templates_path), ("register_prompts", register_prompts_path)):
+        if not os.path.isfile(path):
+            raise ValueError(f"--{name} file not found: {path}")
+    n_templates, n_registers = len(load_json(templates_path)), len(load_json(register_prompts_path))
+    if n_templates != n_registers:
+        raise ValueError(f"--templates has {n_templates} entries but --register_prompts has {n_registers}; "
+                         f"build the templates from the same register prompts")
+    if adapter is not None:
+        if os.path.isdir(adapter):
+            if not os.path.isfile(os.path.join(adapter, "adapter_config.json")):
+                raise ValueError(f"--adapter {adapter} has no adapter_config.json")
+        elif adapter.count("/") != 1 or adapter.startswith((".", "/", "~")):
+            raise ValueError(f"--adapter {adapter} is neither a local directory nor a Hugging Face repo id")
+
+
+def work_dir_for(out_path):
+    """Per-run working directory next to the result file (results/a.json -> results/a/)."""
+    return os.path.splitext(os.path.abspath(out_path))[0]
 
 
 def build_args(model, out_dir, prefix_size=7, dataset_name="custom", sub_data="default", **extra):

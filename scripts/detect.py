@@ -9,9 +9,10 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
-from sdr.pipeline import check_inputs, run_detection, summarize  # noqa: E402
+from sdr.pipeline import check_files, check_inputs, run_detection, summarize, work_dir_for  # noqa: E402
 from sdr.utils import load_json, load_model, require_api_key, save_json, set_seed_all  # noqa: E402
 
 
@@ -23,8 +24,9 @@ def parse_args():
     p.add_argument("--model", default="EleutherAI/pythia-6.9b", help="Hugging Face id of the suspect model's base")
     p.add_argument("--model_path", default=None, help="local weights for --model (optional)")
     p.add_argument("--adapter", default=None, help="LoRA adapter of the suspect model (optional)")
-    p.add_argument("--templates", default="data/templates/mimir_wiki.json", help="register templates (scripts/build_templates.py)")
-    p.add_argument("--register_prompts", default="data/register_prompts.json")
+    p.add_argument("--templates", default=os.path.join(ROOT, "data", "templates", "mimir_wiki.json"),
+                   help="register templates (scripts/build_templates.py)")
+    p.add_argument("--register_prompts", default=os.path.join(ROOT, "data", "register_prompts.json"))
     p.add_argument("--rounds", type=int, default=10, help="Stage-2 refinement rounds (K)")
     p.add_argument("--l", type=int, default=5, help="texts per Stage-2 round")
     p.add_argument("--m", type=int, default=5, help="texts used for Stage-1 register identification")
@@ -37,11 +39,12 @@ def main():
     args = parse_args()
     suspect, reference, prefix = load_json(args.suspect), load_json(args.reference), load_json(args.prefix)
     check_inputs(suspect, reference, prefix)
+    check_files(args.templates, args.register_prompts, args.adapter)
     require_api_key()
     set_seed_all(args.seed)
     model, tokenizer = load_model(args.model, args.model_path, args.adapter)
     result = run_detection(model, tokenizer, suspect, reference, prefix, args.templates, args.register_prompts,
-                           out_dir=os.path.dirname(os.path.abspath(args.out)), model_name=args.model,
+                           out_dir=work_dir_for(args.out), model_name=args.model,
                            rounds=args.rounds, l=args.l, m=args.m, prefix_size=len(prefix))
     save_json(result, args.out)
     baseline, best, best_prompt = summarize(result)

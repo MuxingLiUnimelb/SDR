@@ -8,7 +8,8 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 from sdr.templates import build_reference_rewrites, build_templates  # noqa: E402
 from sdr.utils import load_json, require_api_key, save_json, set_seed_all  # noqa: E402
@@ -17,7 +18,7 @@ from sdr.utils import load_json, require_api_key, save_json, set_seed_all  # noq
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--texts", required=True, help="JSON list of in-domain texts (at least --n_texts)")
-    p.add_argument("--register_prompts", default="data/register_prompts.json")
+    p.add_argument("--register_prompts", default=os.path.join(ROOT, "data", "register_prompts.json"))
     p.add_argument("--gpt_model", default="gpt-4o-mini")
     p.add_argument("--n_texts", type=int, default=10)
     p.add_argument("--seed", type=int, default=42)
