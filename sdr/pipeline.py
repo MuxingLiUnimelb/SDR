@@ -9,11 +9,11 @@ from .mia import MIA_evaluate
 from .sdr_loop import prompt_reverse_loop
 from .utils import load_json, save_json
 
-MIA_METRICS = ["ll", "zlib", "mink_0.2", "recall"]
+MIA_METRICS = ["ll", "zlib", "mink_0.2", "recall", "ref"]
 
 
 def avg_auc(result):
-    """The SDR score: mean AUC-ROC over loss, zlib, Min-K% (20%) and ReCaLL."""
+    """The SDR score: mean AUC-ROC over loss, zlib, Min-K% (20%), ReCaLL and reference-model calibrated loss."""
     return sum(result[k]["AUC-ROC"] for k in MIA_METRICS) / len(MIA_METRICS)
 
 
@@ -64,33 +64,34 @@ def work_dir_for(out_path):
     return os.path.splitext(os.path.abspath(out_path))[0]
 
 
-def build_args(model, out_dir, prefix_size=7, dataset_name="custom", sub_data="default", **extra):
+def build_args(model, out_dir, prefix_size=7, dataset_name="custom", sub_data="default", ref_model="none/none", **extra):
     """Namespace carrying the attributes the original library code reads from `args`."""
     return argparse.Namespace(
         model=model if "/" in model else f"local/{model}",
-        ref_model="none/none",  # reference-model metric is disabled; only used to build a log path
+        ref_model=ref_model if "/" in ref_model else f"local/{ref_model}",
         out_dir=out_dir, dataset_name=dataset_name, sub_data=sub_data, prefix_size=prefix_size, **extra)
 
 
-def run_detection(model, tokenizer, suspect, reference, prefix, templates_path, register_prompts_path,
-                  out_dir, model_name, rounds=10, l=5, m=5, prefix_size=7):
+def run_detection(model, tokenizer, ref_model, suspect, reference, prefix, templates_path, register_prompts_path,
+                  out_dir, model_name, ref_model_name, rounds=10, l=5, m=5, prefix_size=7):
     """Baseline MIA on the original texts, then SDR (Stage 1 + `rounds` Stage-2 rounds).
 
+    As in the paper, the reference model is fed the suspect model's tokenizer.
     Returns {inferred prompt: MIA results, ..., "original": baseline MIA results}.
     """
     os.makedirs(out_dir, exist_ok=True)
     suspect_path = os.path.join(out_dir, "suspect_texts.json")
     save_json(suspect, suspect_path)
-    args = build_args(model_name, os.path.join(out_dir, "mia_logs"), prefix_size=prefix_size,
+    args = build_args(model_name, os.path.join(out_dir, "mia_logs"), prefix_size=prefix_size, ref_model=ref_model_name,
                       original_path=suspect_path, trigger_path=templates_path, domain_path=register_prompts_path)
 
     full_data = []
     for nm_data, m_data in zip(reference, suspect):
         full_data.append({"input": nm_data, "label": 0})
         full_data.append({"input": m_data, "label": 1})
-    original = MIA_evaluate(args, full_data, model, tokenizer, None, None, prefix, prefix_size)
+    original = MIA_evaluate(args, full_data, model, tokenizer, ref_model, tokenizer, prefix, prefix_size)
 
-    best_prompts = prompt_reverse_loop(args, suspect, reference, model, tokenizer, None, None, prefix,
+    best_prompts = prompt_reverse_loop(args, suspect, reference, model, tokenizer, ref_model, tokenizer, prefix,
                                        rounds=rounds, l=l, m=m)
     best_prompts["original"] = original
     return best_prompts

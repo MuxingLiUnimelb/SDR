@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from sdr.pipeline import check_inputs, run_detection, summarize  # noqa: E402
-from sdr.utils import load_json, load_model, require_api_key, save_json, set_seed_all  # noqa: E402
+from sdr.utils import load_json, load_model, load_ref_model, require_api_key, save_json, set_seed_all  # noqa: E402
 
 DATA = os.path.join(ROOT, "data")
 
@@ -25,6 +25,10 @@ def parse_args():
     p.add_argument("--adapter_dir", default=os.path.join(ROOT, "adapters"))
     p.add_argument("--model", default="EleutherAI/pythia-6.9b")
     p.add_argument("--model_path", default=None, help="local Pythia-6.9b weights (optional)")
+    p.add_argument("--ref_model", default="ahxt/LiteLlama-460M-1T", help="reference model for the `ref` metric")
+    p.add_argument("--ref_model_path", default=None, help="local weights for --ref_model (optional)")
+    p.add_argument("--deterministic_baseline", action="store_true",
+                   help="turn the LoRA dropout off for the baseline MIA (the paper kept it on until Stage 1; see README)")
     p.add_argument("--rounds", type=int, default=10)
     p.add_argument("--l", type=int, default=5)
     p.add_argument("--m", type=int, default=5)
@@ -46,15 +50,18 @@ def main():
     check_inputs(suspect, reference, prefix)
     require_api_key()
 
+    ref_model = load_ref_model(args.ref_model, args.ref_model_path)
     rows = []
     for k in args.prompt_ids:
         print(f"\n===== prompt {k}: {secret[str(k)]} =====")
         set_seed_all(args.seed)
-        model, tokenizer = load_model(args.model, args.model_path, os.path.join(args.adapter_dir, f"prompt{k}"))
-        result = run_detection(model, tokenizer, suspect, reference, prefix,
+        model, tokenizer = load_model(args.model, args.model_path, os.path.join(args.adapter_dir, f"prompt{k}"),
+                                      paper_dropout=not args.deterministic_baseline)
+        result = run_detection(model, tokenizer, ref_model, suspect, reference, prefix,
                                os.path.join(DATA, "templates", "mimir_wiki.json"),
                                os.path.join(DATA, "register_prompts.json"),
                                out_dir=os.path.join(args.out_dir, f"prompt{k}"), model_name=args.model,
+                               ref_model_name=args.ref_model,
                                rounds=args.rounds, l=args.l, m=args.m, prefix_size=len(prefix))
         save_json(result, os.path.join(args.out_dir, f"prompt{k}.json"))
         rows.append((k,) + summarize(result))

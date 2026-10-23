@@ -16,7 +16,7 @@ SDR has two stages:
    continued by the suspect model; an LLM infers the rewriting prompt from (original, continuation) pairs and
    merges the candidates. A candidate replaces the current best when its MIA score improves.
 
-The MIA score is the mean AUC-ROC of loss, zlib, Min-K% (20%) and ReCaLL.
+The MIA score is the mean AUC-ROC of loss, zlib, Min-K% (20%), ReCaLL and reference-calibrated loss (`ref`).
 
 ## Installation
 
@@ -74,6 +74,9 @@ python scripts/detect.py --suspect suspect.json --reference reference.json --pre
     --templates my_templates.json --out results/my_run.json
 ```
 
+`--ref_model` (default `ahxt/LiteLlama-460M-1T`, downloaded on first use; `--ref_model_path` for local weights)
+is the reference model for the `ref` metric.
+
 `--model` is the Hugging Face id of the suspect model (add `--model_path` for local weights, `--adapter` if
 it is a LoRA adapter). `--rounds`, `--l`, `--m` set the number of refinement rounds, texts per round and
 texts for register identification (defaults 10 / 5 / 5).
@@ -105,6 +108,10 @@ so the only way they become members is through the laundered fine-tuning.
 `"original"`: the same metrics for the MIA on the original texts.
 
 Notes on behaviour:
+- As in the paper, the reference model is given the token ids produced by the *suspect model's* tokenizer.
+- As in the paper, the LoRA dropout of the suspect model stays active during the baseline MIA (`"original"`) and is
+  switched off when Stage 1 calls `model.eval()`, so the baseline varies slightly between runs. Pass
+  `--deterministic_baseline` to `detect.py` / `demo.py` to switch it off from the start.
 - A Stage-2 candidate is only re-scored on the full 100 + 100 texts when its score on a 20 + 20 subset exceeds 0.65.
 - Candidate selection and the reported AUCs use the same suspect/reference texts.
 

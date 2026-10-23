@@ -150,7 +150,7 @@ def MIA_scorer(one_step_x_origs, domain_prompt, one_step_x_non, model_after_trai
         full_data.append({"input": nm_data, "label": 0})
         full_data.append({"input": m_data, "label": 1})
     results = MIA_evaluate(args, full_data, model_after_training, tokenizer, ref_model, ref_tokenizer, new_nonmember_prefix, args.prefix_size)
-    avg_score = (results["ll"]["AUC-ROC"]+ results["mink_0.2"]["AUC-ROC"] +  results["recall"]["AUC-ROC"]+results["zlib"]["AUC-ROC"])/4
+    avg_score = (results["ll"]["AUC-ROC"]+ results["mink_0.2"]["AUC-ROC"] +  results["recall"]["AUC-ROC"]+results["ref"]["AUC-ROC"]+results["zlib"]["AUC-ROC"])/5
     return avg_score, results
 
 def prompt_reverse_loop(args, x_origs, test_nonmember_data, model_after_training, tokenizer, ref_model, ref_tokenizer, nonmember_prefix, rounds=10, l = 5, m=5):

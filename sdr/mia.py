@@ -138,11 +138,11 @@ def inference(model1, model2, tokenizer1, tokenizer2, target_data, prefix, accel
     with torch.no_grad():
         outputs = model1(input_ids, labels=input_ids)
     _, logits = outputs[:2]
-    # ll_ref = get_ll(target_data, model2, tokenizer2, accelerator.device)[1]
+    ll_ref = get_ll(target_data, model2, tokenizer2, accelerator.device)[1]
 
     # loss and zlib
     pred["ll"] = ll
-    # pred["ref"] = ll - ll_ref
+    pred["ref"] = ll - ll_ref
     pred["perplexity"] = -get_ll(target_data, model1, tokenizer1,accelerator.device)[2]
     pred["zlib"] = ll / len(zlib.compress(bytes(target_data, "utf-8")))
 

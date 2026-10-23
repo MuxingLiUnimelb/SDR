@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from sdr.pipeline import check_files, check_inputs, run_detection, summarize, work_dir_for  # noqa: E402
-from sdr.utils import load_json, load_model, require_api_key, save_json, set_seed_all  # noqa: E402
+from sdr.utils import load_json, load_model, load_ref_model, require_api_key, save_json, set_seed_all  # noqa: E402
 
 
 def parse_args():
@@ -24,6 +24,10 @@ def parse_args():
     p.add_argument("--model", default="EleutherAI/pythia-6.9b", help="Hugging Face id of the suspect model's base")
     p.add_argument("--model_path", default=None, help="local weights for --model (optional)")
     p.add_argument("--adapter", default=None, help="LoRA adapter of the suspect model (optional)")
+    p.add_argument("--ref_model", default="ahxt/LiteLlama-460M-1T", help="reference model for the `ref` metric")
+    p.add_argument("--ref_model_path", default=None, help="local weights for --ref_model (optional)")
+    p.add_argument("--deterministic_baseline", action="store_true",
+                   help="turn the LoRA dropout off for the baseline MIA (the paper kept it on until Stage 1; see README)")
     p.add_argument("--templates", default=os.path.join(ROOT, "data", "templates", "mimir_wiki.json"),
                    help="register templates (scripts/build_templates.py)")
     p.add_argument("--register_prompts", default=os.path.join(ROOT, "data", "register_prompts.json"))
@@ -42,9 +46,10 @@ def main():
     check_files(args.templates, args.register_prompts, args.adapter)
     require_api_key()
     set_seed_all(args.seed)
-    model, tokenizer = load_model(args.model, args.model_path, args.adapter)
-    result = run_detection(model, tokenizer, suspect, reference, prefix, args.templates, args.register_prompts,
-                           out_dir=work_dir_for(args.out), model_name=args.model,
+    model, tokenizer = load_model(args.model, args.model_path, args.adapter, paper_dropout=not args.deterministic_baseline)
+    ref_model = load_ref_model(args.ref_model, args.ref_model_path)
+    result = run_detection(model, tokenizer, ref_model, suspect, reference, prefix, args.templates, args.register_prompts,
+                           out_dir=work_dir_for(args.out), model_name=args.model, ref_model_name=args.ref_model,
                            rounds=args.rounds, l=args.l, m=args.m, prefix_size=len(prefix))
     save_json(result, args.out)
     baseline, best, best_prompt = summarize(result)
