@@ -114,6 +114,10 @@ Notes on behaviour:
   `--deterministic_baseline` to `detect.py` / `demo.py` to switch it off from the start.
 - A Stage-2 candidate is only re-scored on the full 100 + 100 texts when its score on a 20 + 20 subset exceeds 0.65.
 - Candidate selection and the reported AUCs use the same suspect/reference texts.
+- The ReCaLL prefix is the 7 held-out non-member texts (`prefix.json`), disjoint from the suspect and reference texts.
+  On the shipped MIMIR-wiki split, prefix plus target exceeds Pythia's 2,048-token context; SDR's candidate scoring
+  in the paper used the same (untruncated) prefix handling. The paper's baseline column handled the ReCaLL prefix
+  slightly differently, so baseline ReCaLL AUCs can differ from the paper's tables by about 0.01–0.03.
 
 ## Repository layout
 
