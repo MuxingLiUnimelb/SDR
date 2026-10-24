@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sdr.utils import load_json, load_model, require_api_key, save_json, set_seed_all  # noqa: E402
+from sdr.gpt_cache import enable as enable_gpt_cache  # noqa: E402
 
 # LoRA target modules are defined per model in sdr/finetune.py::train_model.
 SUPPORTED_MODELS = ["EleutherAI/pythia-6.9b", "meta-llama/Llama-2-7b-hf", "mistralai/Mistral-7B-v0.3", "tiiuae/falcon-7b"]
@@ -31,6 +32,10 @@ def parse_args():
     p.add_argument("--exp_name", default="simulate")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out_dir", default="runs/simulate")
+    p.add_argument("--gpt_cache", default=None,
+                   help="record/replay all LLM calls in this JSONL (.jsonl.gz to replay only); see README")
+    p.add_argument("--gpt_cache_strict", action="store_true",
+                   help="replay only: fail on any LLM call missing from --gpt_cache (no API key needed)")
     args = p.parse_args()
     if not args.laundered and not (args.members and args.secret_prompt):
         p.error("give either --laundered, or both --members and --secret_prompt")
@@ -39,7 +44,10 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if not args.laundered:
+    if args.gpt_cache_strict and not args.gpt_cache:
+        raise SystemExit("--gpt_cache_strict needs --gpt_cache")
+    cache = enable_gpt_cache(args.gpt_cache, args.gpt_cache_strict) if args.gpt_cache else None
+    if not args.laundered and not args.gpt_cache_strict:
         require_api_key()
     set_seed_all(args.seed)
 
@@ -57,6 +65,8 @@ def main():
     adapter_dir = os.path.join(args.out_dir, "adapter")
     model.save_pretrained(adapter_dir)
     print(f"Laundered data: {os.path.join(args.out_dir, 'laundered.json')}\nAdapter: {adapter_dir}")
+    if cache is not None:
+        print(f"LLM cache {args.gpt_cache}: {cache.hits} calls replayed, {cache.misses} recorded")
     print(f"Next: python scripts/detect.py --model {args.model} --adapter {adapter_dir} --suspect <members.json> "
           f"--reference <nonmembers.json> --prefix <prefix.json>")
 

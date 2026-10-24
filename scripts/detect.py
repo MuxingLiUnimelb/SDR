@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 
 from sdr.pipeline import check_files, check_inputs, run_detection, summarize, work_dir_for  # noqa: E402
 from sdr.utils import load_json, load_model, load_ref_model, require_api_key, save_json, set_seed_all  # noqa: E402
+from sdr.gpt_cache import enable as enable_gpt_cache  # noqa: E402
 
 
 def parse_args():
@@ -36,15 +37,23 @@ def parse_args():
     p.add_argument("--m", type=int, default=5, help="texts used for Stage-1 register identification")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", default="results/detect/result.json")
+    p.add_argument("--gpt_cache", default=None,
+                   help="record/replay all LLM calls in this JSONL (.jsonl.gz to replay only); see README")
+    p.add_argument("--gpt_cache_strict", action="store_true",
+                   help="replay only: fail on any LLM call missing from --gpt_cache (no API key needed)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    if args.gpt_cache_strict and not args.gpt_cache:
+        raise SystemExit("--gpt_cache_strict needs --gpt_cache")
     suspect, reference, prefix = load_json(args.suspect), load_json(args.reference), load_json(args.prefix)
     check_inputs(suspect, reference, prefix)
     check_files(args.templates, args.register_prompts, args.adapter)
-    require_api_key()
+    cache = enable_gpt_cache(args.gpt_cache, args.gpt_cache_strict) if args.gpt_cache else None
+    if not args.gpt_cache_strict:
+        require_api_key()
     set_seed_all(args.seed)
     model, tokenizer = load_model(args.model, args.model_path, args.adapter, paper_dropout=not args.deterministic_baseline)
     ref_model = load_ref_model(args.ref_model, args.ref_model_path)
@@ -58,6 +67,8 @@ def main():
         print("SDR: no Stage-2 round passed the 0.65 gate; see the JSON for details.")
     else:
         print(f"SDR best (mean AUC): {best:.3f}\nRecovered prompt: {best_prompt}")
+    if cache is not None:
+        print(f"LLM cache {args.gpt_cache}: {cache.hits} calls replayed, {cache.misses} recorded")
     print(f"Saved to {args.out}")
 
 

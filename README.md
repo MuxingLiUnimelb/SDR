@@ -101,6 +101,24 @@ LoRA fine-tuning is supported for `EleutherAI/pythia-6.9b`, `meta-llama/Llama-2-
 In the MIMIR splits, `members.json` are MIMIR *non-member* texts: the base model has never seen them,
 so the only way they become members is through the laundered fine-tuning.
 
+## Reproducibility
+
+SDR samples from the LLM (temperature 0.5) and scores candidate prompts on random subsets, so two runs of the
+same experiment give different numbers: Stage 1 can pick a different register, and a single prompt's AUC can move
+by a few hundredths, while averages over many prompts stay stable.
+
+To reproduce the paper's numbers exactly, replay the LLM calls we recorded for every experiment (they are published
+with the adapters in the GitHub Release). Replaying needs no API key:
+
+```bash
+python scripts/detect.py ... --adapter <experiment adapter> --gpt_cache <experiment cache>.jsonl.gz --gpt_cache_strict
+```
+
+`--gpt_cache_strict` fails instead of calling the API if a call is missing from the cache. The other random choices
+are fixed by `--seed 42`; replays are exact with the versions in `requirements.txt` (on a different GPU type the
+third decimal of an AUC can differ). To record your own run, pass `--gpt_cache my_run.jsonl`: new calls are
+appended, and running again with the same file replays them.
+
 ## Output format
 
 `result.json` (intermediate files go to a directory with the same name, e.g. `result/`) maps each recovered prompt that passed the Stage-2 gate to its MIA results

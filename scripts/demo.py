@@ -15,6 +15,7 @@ sys.path.insert(0, ROOT)
 
 from sdr.pipeline import check_inputs, run_detection, summarize  # noqa: E402
 from sdr.utils import load_json, load_model, load_ref_model, require_api_key, save_json, set_seed_all  # noqa: E402
+from sdr.gpt_cache import enable as enable_gpt_cache  # noqa: E402
 
 DATA = os.path.join(ROOT, "data")
 
@@ -34,11 +35,17 @@ def parse_args():
     p.add_argument("--m", type=int, default=5)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out_dir", default=os.path.join(ROOT, "results", "demo"))
+    p.add_argument("--gpt_cache", default=None,
+                   help="record/replay all LLM calls in this JSONL (.jsonl.gz to replay only); see README")
+    p.add_argument("--gpt_cache_strict", action="store_true",
+                   help="replay only: fail on any LLM call missing from --gpt_cache (no API key needed)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    if args.gpt_cache_strict and not args.gpt_cache:
+        raise SystemExit("--gpt_cache_strict needs --gpt_cache")
     for k in args.prompt_ids:
         if not os.path.isfile(os.path.join(args.adapter_dir, f"prompt{k}", "adapter_config.json")):
             raise SystemExit(f"Adapter for prompt {k} not found in {args.adapter_dir}/prompt{k}. "
@@ -48,7 +55,9 @@ def main():
     prefix = load_json(os.path.join(DATA, "mimir_wiki", "prefix.json"))
     secret = load_json(os.path.join(DATA, "secret_prompts.json"))
     check_inputs(suspect, reference, prefix)
-    require_api_key()
+    cache = enable_gpt_cache(args.gpt_cache, args.gpt_cache_strict) if args.gpt_cache else None
+    if not args.gpt_cache_strict:
+        require_api_key()
 
     ref_model = load_ref_model(args.ref_model, args.ref_model_path)
     rows = []
@@ -74,6 +83,8 @@ def main():
         best_s = f"{best:.3f}" if best is not None else "  -  "
         print(f" {k:2d} |  {baseline:.3f}   |  {best_s}   | secret:    {secret[str(k)][:90]}")
         print(f"    |          |          | recovered: {(best_prompt or '-')[:90]}")
+    if cache is not None:
+        print(f"LLM cache {args.gpt_cache}: {cache.hits} calls replayed, {cache.misses} recorded")
     print(f"\nPer-prompt results saved in {args.out_dir}")
 
 
