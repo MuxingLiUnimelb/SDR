@@ -117,7 +117,8 @@ Notes on behaviour:
 - The ReCaLL prefix is the 7 held-out non-member texts (`prefix.json`), disjoint from the suspect and reference texts.
   On the shipped MIMIR-wiki split, prefix plus target exceeds Pythia's 2,048-token context; SDR's candidate scoring
   in the paper used the same (untruncated) prefix handling. The paper's baseline column handled the ReCaLL prefix
-  slightly differently, so baseline ReCaLL AUCs can differ from the paper's tables by about 0.01–0.03.
+  slightly differently, so baseline ReCaLL AUCs can differ from the paper's tables by up to about 0.05 (the other four
+  baseline metrics match to within 0.005).
 
 ## Repository layout
 
