@@ -1,7 +1,7 @@
 """Simulate data laundering: rewrite texts with a secret prompt, then LoRA-fine-tune a model on the rewrites.
 
 Defaults match the released adapters (LoRA r=8, alpha=32, lr 4e-4, 60 epochs, batch size 2,
-one optimizer step per epoch). Pass --laundered to reuse existing rewrites (e.g. data/laundered/prompt4/members.json)
+one optimizer step per epoch). Pass --laundered to reuse existing rewrites (e.g. data/laundered/inside/5/members.json)
 and skip the API entirely.
 """
 import argparse

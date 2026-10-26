@@ -1,91 +1,77 @@
-"""Demo: run SDR on the five released Pythia-6.9b models (MIMIR-wiki laundered with inside prompts 1-5).
+"""Demo: run SDR on released Pythia-6.9b models (MIMIR-wiki laundered with the paper's inside prompts).
 
-Uses the shipped data split and the LoRA adapters from the GitHub Release
-(download them first with `bash scripts/download_adapters.sh`). No data is regenerated and nothing is trained.
+By default the five models laundered with inside prompts 2-6 of the paper (spoken style, interview, interactive
+discussion, storytelling, news report). Uses the shipped data split and the LoRA adapters from the GitHub Release
+(`bash scripts/download_release.sh inside`, plus `caches` for --replay). Nothing is regenerated or trained.
 """
 import argparse
-import gc
+import json
 import os
 import sys
-
-import torch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from sdr.pipeline import check_inputs, run_detection, summarize  # noqa: E402
-from sdr.utils import load_json, load_model, load_ref_model, require_api_key, save_json, set_seed_all  # noqa: E402
-from sdr.gpt_cache import enable as enable_gpt_cache  # noqa: E402
-
-DATA = os.path.join(ROOT, "data")
+from sdr.paper import detect_command, run_logged, select  # noqa: E402
+from sdr.pipeline import avg_auc  # noqa: E402
+from sdr.utils import load_json, require_api_key  # noqa: E402
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--prompt_ids", type=int, nargs="+", default=[1, 2, 3, 4, 5], choices=[1, 2, 3, 4, 5])
+    p.add_argument("--ids", type=int, nargs="+", default=[2, 3, 4, 5, 6], choices=range(1, 24), metavar="ID",
+                   help="inside experiments (paper appendix IDs 1-23); default 2 3 4 5 6")
+    p.add_argument("--replay", action="store_true",
+                   help="replay the LLM calls recorded for the paper instead of calling the API (exact, no API key)")
+    p.add_argument("--rounds", type=int, default=10, help="Stage-2 rounds (with --replay: replays the first rounds)")
     p.add_argument("--adapter_dir", default=os.path.join(ROOT, "adapters"))
-    p.add_argument("--model", default="EleutherAI/pythia-6.9b")
+    p.add_argument("--cache_dir", default=os.path.join(ROOT, "caches"))
     p.add_argument("--model_path", default=None, help="local Pythia-6.9b weights (optional)")
-    p.add_argument("--ref_model", default="ahxt/LiteLlama-460M-1T", help="reference model for the `ref` metric")
-    p.add_argument("--ref_model_path", default=None, help="local weights for --ref_model (optional)")
+    p.add_argument("--ref_model_path", default=None, help="local LiteLlama-460M-1T weights (optional)")
     p.add_argument("--deterministic_baseline", action="store_true",
-                   help="turn the LoRA dropout off for the baseline MIA (the paper kept it on until Stage 1; see README)")
-    p.add_argument("--rounds", type=int, default=10)
-    p.add_argument("--l", type=int, default=5)
-    p.add_argument("--m", type=int, default=5)
-    p.add_argument("--seed", type=int, default=42)
+                   help="turn the LoRA dropout off for the baseline MIA (not with --replay; see README)")
     p.add_argument("--out_dir", default=os.path.join(ROOT, "results", "demo"))
-    p.add_argument("--gpt_cache", default=None,
-                   help="record/replay all LLM calls in this JSONL (.jsonl.gz to replay only); see README")
-    p.add_argument("--gpt_cache_strict", action="store_true",
-                   help="replay only: fail on any LLM call missing from --gpt_cache (no API key needed)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
-    if args.gpt_cache_strict and not args.gpt_cache:
-        raise SystemExit("--gpt_cache_strict needs --gpt_cache")
-    for k in args.prompt_ids:
-        if not os.path.isfile(os.path.join(args.adapter_dir, f"prompt{k}", "adapter_config.json")):
-            raise SystemExit(f"Adapter for prompt {k} not found in {args.adapter_dir}/prompt{k}. "
-                             f"Run `bash scripts/download_adapters.sh` first.")
-    suspect = load_json(os.path.join(DATA, "mimir_wiki", "members.json"))
-    reference = load_json(os.path.join(DATA, "mimir_wiki", "nonmembers.json"))
-    prefix = load_json(os.path.join(DATA, "mimir_wiki", "prefix.json"))
-    secret = load_json(os.path.join(DATA, "secret_prompts.json"))
-    check_inputs(suspect, reference, prefix)
-    cache = enable_gpt_cache(args.gpt_cache, args.gpt_cache_strict) if args.gpt_cache else None
-    if not args.gpt_cache_strict:
+    if args.replay and args.deterministic_baseline:
+        raise SystemExit("--deterministic_baseline changes the random stream, so the recorded calls no longer match; "
+                         "drop it or drop --replay")
+    if not 1 <= args.rounds <= 10 and args.replay:
+        raise SystemExit("--replay supports 1-10 rounds (the paper's runs had 10)")
+    for k in args.ids:
+        needed = [os.path.join(args.adapter_dir, "inside", str(k), "adapter_config.json")]
+        if args.replay:
+            needed.append(os.path.join(args.cache_dir, "inside", f"{k}.jsonl.gz"))
+        for path in needed:
+            if not os.path.exists(path):
+                raise SystemExit(f"{path} not found. Run `bash scripts/download_release.sh inside"
+                                 f"{' caches' if args.replay else ''}` first.")
+    if not args.replay:
         require_api_key()
+    secret = load_json(os.path.join(ROOT, "data", "secret_prompts.json"))["inside"]
 
-    ref_model = load_ref_model(args.ref_model, args.ref_model_path)
     rows = []
-    for k in args.prompt_ids:
-        print(f"\n===== prompt {k}: {secret[str(k)]} =====")
-        set_seed_all(args.seed)
-        model, tokenizer = load_model(args.model, args.model_path, os.path.join(args.adapter_dir, f"prompt{k}"),
-                                      paper_dropout=not args.deterministic_baseline)
-        result = run_detection(model, tokenizer, ref_model, suspect, reference, prefix,
-                               os.path.join(DATA, "templates", "mimir_wiki.json"),
-                               os.path.join(DATA, "register_prompts.json"),
-                               out_dir=os.path.join(args.out_dir, f"prompt{k}"), model_name=args.model,
-                               ref_model_name=args.ref_model,
-                               rounds=args.rounds, l=args.l, m=args.m, prefix_size=len(prefix))
-        save_json(result, os.path.join(args.out_dir, f"prompt{k}.json"))
-        rows.append((k,) + summarize(result))
-        del model
-        gc.collect()
-        torch.cuda.empty_cache()
+    for k in args.ids:
+        name = f"inside-{k}"
+        print(f"\n===== {name}: {secret[str(k)]} =====", flush=True)
+        cmd = detect_command(name, args.adapter_dir, args.out_dir, cache_dir=args.cache_dir if args.replay else None,
+                             rounds=args.rounds, model_path=args.model_path, ref_model_path=args.ref_model_path,
+                             extra=["--deterministic_baseline"] if args.deterministic_baseline else [])
+        log_path = os.path.join(args.out_dir, f"{name}.log")
+        if run_logged(cmd, log_path) != 0:
+            raise SystemExit(f"{name} failed; see {log_path}")
+        result = json.load(open(os.path.join(args.out_dir, f"{name}.json")))
+        prompt, sdr = select(result, open(log_path, errors="replace").read())
+        rows.append((k, avg_auc(result["original"]), avg_auc(sdr), prompt))
 
-    print("\n id | baseline | SDR best | secret prompt / recovered prompt")
-    for k, baseline, best, best_prompt in rows:
-        best_s = f"{best:.3f}" if best is not None else "  -  "
-        print(f" {k:2d} |  {baseline:.3f}   |  {best_s}   | secret:    {secret[str(k)][:90]}")
-        print(f"    |          |          | recovered: {(best_prompt or '-')[:90]}")
-    if cache is not None:
-        print(f"LLM cache {args.gpt_cache}: {cache.hits} calls replayed, {cache.misses} recorded")
-    print(f"\nPer-prompt results saved in {args.out_dir}")
+    print("\n id | baseline | SDR   | secret prompt / recovered prompt")
+    for k, baseline, best, prompt in rows:
+        print(f" {k:2d} |  {baseline:.3f}   | {best:.3f} | secret:    {secret[str(k)][:90]}")
+        print(f"    |          |       | recovered: {(prompt or '-')[:90]}")
+    print(f"\nScores are the mean AUC of the five MIAs. Per-experiment results and logs: {args.out_dir}")
 
 
 if __name__ == "__main__":
