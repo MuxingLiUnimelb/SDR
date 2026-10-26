@@ -30,25 +30,54 @@ Python 3.8–3.11 (tested on Python 3.8; `torch==2.1.0` has no wheels for newer 
 The code was run on a single NVIDIA A100 (80 GB). The 7B models are loaded in fp16 (about 14 GB of weights),
 so detection needs a GPU with more memory than that, and LoRA fine-tuning in `simulate.py` needs more still.
 
-## Demo: the five released models
+## Released models and data
 
-The demo models are Pythia-6.9b LoRA-fine-tuned on 100 MIMIR-wikipedia texts laundered by GPT-4o-mini
-with five secret prompts (`data/secret_prompts.json`: spoken style, interview, interactive discussion,
-storytelling, news report). The laundered training data is in `data/laundered/`; nothing is regenerated.
+The paper's experiments fine-tune Pythia-6.9b (LoRA) on 100 MIMIR-wikipedia texts laundered by GPT-4o-mini with a
+secret prompt. They are named after the paper's appendix tables: `inside-1` … `inside-23` (the secret prompt is built on
+one of the 24 registers SDR searches) and `outside-1` … `outside-10` (it is not).
+
+| Where | What |
+|---|---|
+| `data/secret_prompts.json` | the secret prompt of every experiment |
+| `data/laundered/<group>/<id>/` | the laundered texts each adapter was fine-tuned on (see its `README.md` for two exceptions) |
+| `data/mimir_wiki/` | the MIMIR-wikipedia split: suspect texts, reference texts, ReCaLL prefix |
+| GitHub Release | the 33 LoRA adapters and the LLM calls recorded in every experiment |
 
 ```bash
-bash scripts/download_adapters.sh                 # -> adapters/prompt{1..5}/
-python scripts/demo.py --prompt_ids 4 --rounds 1  # quick try: one model, one refinement round
-python scripts/demo.py                            # all five models, 10 rounds each
+bash scripts/download_release.sh                  # all: adapters/inside, adapters/outside, caches (~900 MB)
+bash scripts/download_release.sh inside caches    # enough for the demo
 ```
 
-The demo prints, per model, the baseline MIA on the original texts, the best SDR score and the recovered
-prompt next to the secret one; full results go to `results/demo/prompt{k}.json`.
-LLM sampling (temperature 0.5) makes SDR results vary between runs; the baseline does not.
+## Demo
 
-LLM calls are sequential. Register identification alone makes about 560 calls per model and every refinement
-round adds 58–265 more, so the full demo (5 models × 10 rounds) makes several thousand calls and runs for
-many hours; the quick try above makes roughly 600–800 calls.
+```bash
+python scripts/demo.py --replay --ids 5 --rounds 1   # quick try: one model, one round, recorded LLM calls (no API key)
+python scripts/demo.py --replay                      # inside-2 … inside-6, 10 rounds, exactly the paper's runs
+python scripts/demo.py                               # the same models with live LLM calls (needs an API key)
+```
+
+The default models are `inside-2` … `inside-6` (spoken style, interview, interactive discussion, storytelling, news
+report); `--ids` picks any of 1–23. The demo prints, per model, the baseline MIA on the original texts, the SDR score
+and the recovered prompt next to the secret one; results and logs go to `results/demo/`.
+
+With live calls, LLM sampling (temperature 0.5) makes SDR results vary between runs. LLM calls are sequential: register
+identification makes about 560 calls per model and every refinement round adds 58–265 more, so 10 rounds take hours
+per model. Replaying needs no API key and only the GPU time (about an hour per model on an A100).
+
+## Reproducing the paper
+
+```bash
+bash scripts/download_release.sh
+python scripts/reproduce_paper.py                                   # all 33 experiments
+python scripts/reproduce_paper.py --experiments inside-16 outside-1 # a few
+```
+
+Each experiment runs `scripts/detect.py` on its adapter while replaying its recorded LLM calls strictly, so no API key
+is needed and the results are the paper's, digit for digit. The script then prints the main table (AUC, ASR and
+TPR@5%FPR averaged over the inside and the outside experiments), the TPR@1%FPR table and the per-experiment results
+(`results/paper/per_experiment.csv`). For each experiment the paper reports the Stage-2 prompt with the highest summed
+AUC of the five MIAs, or the Stage-1 register if no Stage-2 round passed the gate (`inside-16`, `inside-20`).
+Finished experiments are skipped when the script is run again; each takes about an hour on an A100.
 
 ## Using SDR on your own data
 
@@ -94,7 +123,7 @@ python scripts/detect.py --suspect runs/data/mimir_wiki/members.json --reference
 MIMIR is a gated dataset on Hugging Face: accept its terms on the dataset page and run `huggingface-cli login`
 before `prepare_mimir.py`. The demo does not need it (the split is shipped in `data/mimir_wiki/`).
 
-`simulate.py --laundered data/laundered/prompt4/members.json` retrains on the shipped rewrites without any API calls.
+`simulate.py --laundered data/laundered/inside/5/members.json` retrains on the shipped rewrites without any API calls.
 LoRA fine-tuning is supported for `EleutherAI/pythia-6.9b`, `meta-llama/Llama-2-7b-hf`,
 `mistralai/Mistral-7B-v0.3` and `tiiuae/falcon-7b`.
 
@@ -104,20 +133,18 @@ so the only way they become members is through the laundered fine-tuning.
 ## Reproducibility
 
 SDR samples from the LLM (temperature 0.5) and scores candidate prompts on random subsets, so two runs of the
-same experiment give different numbers: Stage 1 can pick a different register, and a single prompt's AUC can move
-by a few hundredths, while averages over many prompts stay stable.
+same experiment give different numbers. Most of the variation comes from Stage 1: when it picks a different register,
+a single experiment's score can move by 0.1 or more, while averages over many experiments are more stable.
 
-To reproduce the paper's numbers exactly, replay the LLM calls we recorded for every experiment (they are published
-with the adapters in the GitHub Release). Replaying needs no API key:
+The paper's numbers are therefore reproduced by replaying the LLM calls recorded in each experiment
+(`scripts/reproduce_paper.py`, or `--gpt_cache <cache>.jsonl.gz --gpt_cache_strict` on `detect.py`). The other random
+choices are fixed by `--seed 42`. `--gpt_cache_strict` stops with `GPTCacheMiss` instead of calling the API when a
+request is not in the cache. All 33 experiments were replayed this way on NVIDIA A100 GPUs with the versions in
+`requirements.txt` and matched bit for bit. On other hardware or library versions the suspect model's sampled
+continuations can change; the next LLM request then differs from the recorded one and strict replay stops there.
 
-```bash
-python scripts/detect.py ... --adapter <experiment adapter> --gpt_cache <experiment cache>.jsonl.gz --gpt_cache_strict
-```
-
-`--gpt_cache_strict` fails instead of calling the API if a call is missing from the cache. The other random choices
-are fixed by `--seed 42`; replays are exact with the versions in `requirements.txt` (on a different GPU type the
-third decimal of an AUC can differ). To record your own run, pass `--gpt_cache my_run.jsonl`: new calls are
-appended, and running again with the same file replays them.
+To record your own run, pass `--gpt_cache my_run.jsonl`: new calls are appended, and running again with the same file
+replays them.
 
 ## Output format
 
@@ -141,9 +168,10 @@ Notes on behaviour:
 ## Repository layout
 
 ```
-sdr/        method code (llm_api, register_id = Stage 1, sdr_loop = Stage 2, mia, metrics, finetune, templates, data)
-scripts/    prepare_mimir, simulate, build_templates, detect, demo, download_adapters.sh
-data/       MIMIR-wiki split, laundered data for the demo, register prompts and templates
+sdr/        method code (llm_api, register_id = Stage 1, sdr_loop = Stage 2, mia, metrics, finetune, templates, data),
+            entry-point glue (pipeline, utils, gpt_cache) and the paper's experiment list and tables (paper)
+scripts/    prepare_mimir, simulate, build_templates, detect, demo, reproduce_paper, download_release.sh
+data/       MIMIR-wiki split, secret prompts and laundered data of the paper's experiments, register prompts and templates
 ```
 
 ## Citation
