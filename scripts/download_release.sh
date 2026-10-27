@@ -5,12 +5,8 @@
 #   outside  adapters/outside/1..10   Pythia-6.9b adapters, outside experiments                      ~250 MB
 #   caches   caches/{inside,outside}/<id>.jsonl.gz   recorded LLM calls, for exact replay           ~60 MB
 set -euo pipefail
-BASE="${SDR_RELEASE_URL:-https://github.com/OWNER/REPO/releases/download/v1.0}"
+BASE="${SDR_RELEASE_URL:-https://github.com/MuxingLiUnimelb/SDR/releases/download/v1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ "$BASE" == *"/OWNER/"* ]]; then
-  echo "The release URL is not configured yet; set SDR_RELEASE_URL to the release download URL." >&2
-  exit 1
-fi
 parts=("$@")
 [ ${#parts[@]} -eq 0 ] && parts=(inside outside caches)
 if command -v sha256sum >/dev/null; then check=(sha256sum -c -); else check=(shasum -a 256 -c -); fi
