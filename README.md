@@ -12,7 +12,7 @@ SDR has two stages:
 1. **Register identification.** First sentences of a few original texts are cast into 24 register templates
    (`data/templates/`); the suspect model's confidence on each picks the top-5 registers, and an MIA score
    picks the best one.
-2. **Iterative refinement.** For `K` rounds, texts rewritten with the current prompt are truncated and
+2. **Details refinement.** For `K` rounds, texts rewritten with the current prompt are truncated and
    continued by the suspect model; an LLM infers the rewriting prompt from (original, continuation) pairs and
    merges the candidates. A candidate replaces the current best when its MIA score improves.
 
