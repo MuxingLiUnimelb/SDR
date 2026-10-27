@@ -1,6 +1,6 @@
-# SDR: Detecting Laundered Training Data by Recovering the Rewriting Prompt
+# SDR: Combating Data Laundering in LLM Training
 
-> **Paper:** TODO — title, venue, arXiv link.
+> **Paper:** [Combating Data Laundering in LLM Training](https://arxiv.org/abs/2604.01904), NeurIPS 2026 (Spotlight).
 
 Membership inference attacks (MIAs) fail when a model owner *launders* someone else's data: they rewrite
 the texts with an LLM and a secret prompt, then fine-tune on the rewrites. SDR lets the data owner recover a
@@ -34,7 +34,7 @@ so detection needs a GPU with more memory than that, and LoRA fine-tuning in `si
 
 The paper's experiments fine-tune Pythia-6.9b (LoRA) on 100 MIMIR-wikipedia texts laundered by GPT-4o-mini with a
 secret prompt. They are named after the paper's appendix tables: `inside-1` … `inside-23` (the secret prompt is built on
-one of the 24 registers SDR searches) and `outside-1` … `outside-10` (it is not).
+one of the 23 registers SDR searches) and `outside-1` … `outside-10` (it is not).
 
 | Where | What |
 |---|---|
@@ -177,7 +177,12 @@ data/       MIMIR-wiki split, secret prompts and laundered data of the paper's e
 ## Citation
 
 ```bibtex
-TODO
+@inproceedings{li2026combating,
+  title     = {Combating Data Laundering in LLM Training},
+  author    = {Li, Muxing and Ye, Zesheng and Li, Sharon and Liu, Feng},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2026}
+}
 ```
 
 ## License
