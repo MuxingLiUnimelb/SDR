@@ -2,6 +2,8 @@
 
 > **Paper:** [Combating Data Laundering in LLM Training](https://arxiv.org/abs/2604.01904), NeurIPS 2026 (Spotlight).
 
+![A: training-data detection separates the loss of training and non-training texts when the model is trained on the original data. B: after the data is rewritten (e.g. in a storytelling style) and the model is trained on the rewrites, the two distributions overlap and the signal is erased.](assets/motivation.png)
+
 Membership inference attacks (MIAs) fail when a model owner *launders* someone else's data: they rewrite
 the texts with an LLM and a secret prompt, then fine-tune on the rewrites. SDR lets the data owner recover a
 rewriting prompt that is close to the secret one, re-rewrite their own texts with it, and run MIA on those
@@ -172,6 +174,7 @@ sdr/        method code (llm_api, register_id = Stage 1, sdr_loop = Stage 2, mia
             entry-point glue (pipeline, utils, gpt_cache) and the paper's experiment list and tables (paper)
 scripts/    prepare_mimir, simulate, build_templates, detect, demo, reproduce_paper, download_release.sh
 data/       MIMIR-wiki split, secret prompts and laundered data of the paper's experiments, register prompts and templates
+assets/     figure of this README
 ```
 
 ## Citation
