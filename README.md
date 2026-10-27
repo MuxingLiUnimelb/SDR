@@ -2,23 +2,24 @@
 
 > **Paper:** [Combating Data Laundering in LLM Training](https://arxiv.org/abs/2604.01904), NeurIPS 2026 (Spotlight).
 
-![A: training-data detection separates the loss of training and non-training texts when the model is trained on the original data. B: after the data is rewritten (e.g. in a storytelling style) and the model is trained on the rewrites, the two distributions overlap and the signal is erased.](assets/motivation.png)
+![A: unauthorized training data detection separates the loss of training and non-training texts when the model is trained on the original data. B: after the data is rewritten (e.g. in a storytelling style) and the model is trained on the rewrites, the two distributions overlap and the signal is erased.](assets/motivation.png)
 
-Membership inference attacks (MIAs) fail when a model owner *launders* someone else's data: they rewrite
+Unauthorized training data detection fails when a model owner *launders* someone else's data: they rewrite
 the texts with an LLM and a secret prompt, then fine-tune on the rewrites. SDR lets the data owner recover a
-rewriting prompt that is close to the secret one, re-rewrite their own texts with it, and run MIA on those
-re-rewrites instead of on the originals.
+rewriting prompt that is close to the secret one, re-rewrite their own texts with it, and run the detection on
+those re-rewrites instead of on the originals.
 
 SDR has two stages:
 
 1. **Register identification.** First sentences of a few original texts are cast into 24 register templates
-   (`data/templates/`); the suspect model's confidence on each picks the top-5 registers, and an MIA score
-   picks the best one.
+   (`data/templates/`); the suspect model's confidence on each picks the top-5 registers, and a detection
+   score picks the best one.
 2. **Details refinement.** For `K` rounds, texts rewritten with the current prompt are truncated and
    continued by the suspect model; an LLM infers the rewriting prompt from (original, continuation) pairs and
-   merges the candidates. A candidate replaces the current best when its MIA score improves.
+   merges the candidates. A candidate replaces the current best when its detection score improves.
 
-The MIA score is the mean AUC-ROC of loss, zlib, Min-K% (20%), ReCaLL and reference-calibrated loss (`ref`).
+The detection score is the mean AUC-ROC of five detection methods: loss, zlib, Min-K% (20%), ReCaLL and
+reference-calibrated loss (`ref`).
 
 ## Installation
 
@@ -59,7 +60,7 @@ python scripts/demo.py                               # the same models with live
 ```
 
 The default models are `inside-2` … `inside-6` (spoken style, interview, interactive discussion, storytelling, news
-report); `--ids` picks any of 1–23. The demo prints, per model, the baseline MIA on the original texts, the SDR score
+report); `--ids` picks any of 1–23. The demo prints, per model, the baseline detection score on the original texts, the SDR score
 and the recovered prompt next to the secret one; results and logs go to `results/demo/`.
 
 With live calls, LLM sampling (temperature 0.5) makes SDR results vary between runs. LLM calls are sequential: register
@@ -78,7 +79,7 @@ Each experiment runs `scripts/detect.py` on its adapter while replaying its reco
 is needed and the results are the paper's, digit for digit. The script then prints the main table (AUC, ASR and
 TPR@5%FPR averaged over the inside and the outside experiments), the TPR@1%FPR table and the per-experiment results
 (`results/paper/per_experiment.csv`). For each experiment the paper reports the Stage-2 prompt with the highest summed
-AUC of the five MIAs, or the Stage-1 register if no Stage-2 round passed the gate (`inside-16`, `inside-20`).
+AUC of the five detection methods, or the Stage-1 register if no Stage-2 round passed the gate (`inside-16`, `inside-20`).
 Finished experiments are skipped when the script is run again; each takes about an hour on an A100.
 
 ## Using SDR on your own data
@@ -129,8 +130,8 @@ before `prepare_mimir.py`. The demo does not need it (the split is shipped in `d
 LoRA fine-tuning is supported for `EleutherAI/pythia-6.9b`, `meta-llama/Llama-2-7b-hf`,
 `mistralai/Mistral-7B-v0.3` and `tiiuae/falcon-7b`.
 
-In the MIMIR splits, `members.json` are MIMIR *non-member* texts: the base model has never seen them,
-so the only way they become members is through the laundered fine-tuning.
+In the MIMIR splits, `members.json` are texts from MIMIR's *non-member* split: the base model has never seen them,
+so they become training texts only through the laundered fine-tuning.
 
 ## Reproducibility
 
@@ -150,18 +151,18 @@ replays them.
 
 ## Output format
 
-`result.json` (intermediate files go to a directory with the same name, e.g. `result/`) maps each recovered prompt that passed the Stage-2 gate to its MIA results
+`result.json` (intermediate files go to a directory with the same name, e.g. `result/`) maps each recovered prompt that passed the Stage-2 gate to its detection results
 (`{"ll": {"AUC-ROC": ..., "TPR@1%FPR": ...}, "zlib": ..., "mink_0.2": ..., "recall": ...}`), plus
-`"original"`: the same metrics for the MIA on the original texts.
+`"original"`: the same metrics for the detection on the original texts.
 
 Notes on behaviour:
 - As in the paper, the reference model is given the token ids produced by the *suspect model's* tokenizer.
-- As in the paper, the LoRA dropout of the suspect model stays active during the baseline MIA (`"original"`) and is
+- As in the paper, the LoRA dropout of the suspect model stays active during the baseline detection (`"original"`) and is
   switched off when Stage 1 calls `model.eval()`, so the baseline varies slightly between runs. Pass
   `--deterministic_baseline` to `detect.py` / `demo.py` to switch it off from the start.
 - A Stage-2 candidate is only re-scored on the full 100 + 100 texts when its score on a 20 + 20 subset exceeds 0.65.
 - Candidate selection and the reported AUCs use the same suspect/reference texts.
-- The ReCaLL prefix is the 7 held-out non-member texts (`prefix.json`), disjoint from the suspect and reference texts.
+- The ReCaLL prefix is the 7 held-out non-training texts (`prefix.json`), disjoint from the suspect and reference texts.
   On the shipped MIMIR-wiki split, prefix plus target exceeds Pythia's 2,048-token context; SDR's candidate scoring
   in the paper used the same (untruncated) prefix handling. The paper's baseline column handled the ReCaLL prefix
   slightly differently, so baseline ReCaLL AUCs can differ from the paper's tables by up to about 0.05 (the other four
@@ -190,5 +191,5 @@ assets/     figure of this README
 
 ## License
 
-MIT. The MIA code in `sdr/mia.py` and `sdr/metrics.py` is adapted from
+MIT. The detection code in `sdr/mia.py` and `sdr/metrics.py` is adapted from
 [Min-K% Prob / WikiMIA](https://github.com/swj0419/detect-pretrain-code).
