@@ -10,8 +10,4 @@ the secret prompt of each experiment is in `../secret_prompts.json`.
 Exceptions:
 
 - `inside/4` and `inside/16`: the rewrites the adapters were trained on were not kept; these files were generated
-  afterwards with the same secret prompt and the same suspect texts. The adapters' loss on them is that of unseen
-  rewrites (about 2.4 and 2.7 per token, against 0.29 and 0.04 at the end of training), so retraining on them with
-  `scripts/simulate.py` gives a model that differs from the released one. For every other experiment the adapter's
-  loss on `members.json` is at or below its final training loss.
-- `outside/1` and `outside/2`: the released adapters were retrained on these files with `scripts/simulate.py`.
+  afterwards with the same secret prompt and the same suspect texts.
